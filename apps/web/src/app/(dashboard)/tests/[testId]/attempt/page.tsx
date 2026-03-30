@@ -15,6 +15,7 @@ export default function AttemptPage() {
   const router = useRouter();
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
+  const [initError, setInitError] = useState<string | null>(null);
 
   const {
     status,
@@ -74,25 +75,34 @@ export default function AttemptPage() {
     if (status !== "idle") return;
 
     const init = async () => {
-      const res = await fetch(`/api/tests/${testId}/attempt`, { method: "POST" });
-      if (!res.ok) {
-        router.push(`/tests/${testId}`);
-        return;
+      try {
+        const res = await fetch(`/api/tests/${testId}/attempt`, { method: "POST" });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          // 410 = expired, 403 = admin, redirect silently
+          if (res.status === 410 || res.status === 403) {
+            router.push(`/tests/${testId}`);
+            return;
+          }
+          setInitError(data.error ?? `Server error (${res.status}). Please try again.`);
+          return;
+        }
+        if (!data.questions || data.questions.length === 0) {
+          router.push(`/tests/${testId}`);
+          return;
+        }
+        const secondsRemaining = Math.max(
+          0,
+          Math.floor((new Date(data.expiresAt).getTime() - Date.now()) / 1000)
+        );
+        if (secondsRemaining === 0) {
+          router.push(`/tests/${testId}`);
+          return;
+        }
+        startSession(data.test, data.questions, data.attemptId, data.expiresAt);
+      } catch (err) {
+        setInitError("Network error — check your connection and try again.");
       }
-      const data = await res.json();
-      if (!data.questions || data.questions.length === 0) {
-        router.push(`/tests/${testId}`);
-        return;
-      }
-      const secondsRemaining = Math.max(
-        0,
-        Math.floor((new Date(data.expiresAt).getTime() - Date.now()) / 1000)
-      );
-      if (secondsRemaining === 0) {
-        router.push(`/tests/${testId}`);
-        return;
-      }
-      startSession(data.test, data.questions, data.attemptId, data.expiresAt);
     };
 
     init();
@@ -115,6 +125,34 @@ export default function AttemptPage() {
   const progressFlagged = useTestSessionStore((s) => s.flagged.size);
   const progressTotal = useTestSessionStore((s) => s.questions.length);
   const currentQuestion = questions[currentIndex] as Question | undefined;
+
+  if (initError) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <div className="text-center max-w-sm mx-auto">
+          <div className="h-14 w-14 rounded-full bg-destructive/10 flex items-center justify-center mx-auto mb-4">
+            <AlertCircle className="h-7 w-7 text-destructive" />
+          </div>
+          <h2 className="text-lg font-bold text-foreground mb-2">Could not load test</h2>
+          <p className="text-sm text-muted-foreground mb-6">{initError}</p>
+          <div className="flex gap-3 justify-center">
+            <button
+              onClick={() => router.push(`/tests/${testId}`)}
+              className="rounded-xl border border-border px-5 py-2.5 text-sm font-medium text-foreground hover:bg-muted transition-colors"
+            >
+              Go back
+            </button>
+            <button
+              onClick={() => { setInitError(null); }}
+              className="rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground hover:bg-primary/90 transition-colors"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (status === "idle" || status === "loading") {
     return (
