@@ -25,11 +25,8 @@ export async function POST(
     return NextResponse.json({ error: "Admins cannot take tests" }, { status: 403 });
   }
 
-  // Rate limit: max 5 exam starts per user per 5 minutes (prevents spam)
-  const rl = await rateLimit(`attempt:${user.id}`, 5, 300);
-  if (!rl.allowed) return rateLimitResponse(rl.resetInSecs);
-
   // Check for existing active attempt — resume it instead of creating a new one
+  // Do this BEFORE rate limiting so resuming an existing attempt is never blocked
   const { data: activeAttempt } = await supabase
     .from("test_attempts")
     .select("id, started_at")
@@ -37,6 +34,12 @@ export async function POST(
     .eq("test_id", testId)
     .eq("status", "in_progress")
     .single();
+
+  // Only rate-limit new attempt creation, not resuming existing ones
+  if (!activeAttempt) {
+    const rl = await rateLimit(`attempt:${user.id}`, 20, 300);
+    if (!rl.allowed) return rateLimitResponse(rl.resetInSecs);
+  }
 
   const serviceClient = await getSupabaseServiceClient();
 
