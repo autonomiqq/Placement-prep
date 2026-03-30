@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient, getSupabaseServiceClient } from "@/lib/supabase/server";
 import { getCachedTest, setCachedTest, getCachedQuestions, setCachedQuestions } from "@/lib/cache/tests";
-import { rateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 export async function POST(
   _req: NextRequest,
@@ -26,7 +25,6 @@ export async function POST(
   }
 
   // Check for existing active attempt — resume it instead of creating a new one
-  // Do this BEFORE rate limiting so resuming an existing attempt is never blocked
   const { data: activeAttempt } = await supabase
     .from("test_attempts")
     .select("id, started_at")
@@ -34,12 +32,6 @@ export async function POST(
     .eq("test_id", testId)
     .eq("status", "in_progress")
     .single();
-
-  // Only rate-limit new attempt creation, not resuming existing ones
-  if (!activeAttempt) {
-    const rl = await rateLimit(`attempt:${user.id}`, 20, 300);
-    if (!rl.allowed) return rateLimitResponse(rl.resetInSecs);
-  }
 
   const serviceClient = await getSupabaseServiceClient();
 
