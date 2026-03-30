@@ -67,7 +67,8 @@ export async function POST(
     };
   }
 
-  // 3. Batch upsert all answers
+  // 3. Batch upsert all answers (use service client to bypass RLS)
+  const serviceClient = await getSupabaseServiceClient();
   const answerRows = Object.entries(mergedAnswers).map(([questionId, a]) => ({
     attempt_id: attemptId,
     question_id: questionId,
@@ -77,19 +78,25 @@ export async function POST(
   }));
 
   if (answerRows.length > 0) {
-    await supabase.from("answers").upsert(answerRows, {
+    const { error: upsertError } = await serviceClient.from("answers").upsert(answerRows, {
       onConflict: "attempt_id,question_id",
     });
+    if (upsertError) {
+      console.error("[submit] answers upsert error:", upsertError.message);
+    }
   }
 
   // 4. Score atomically via DB function (service client bypasses RLS)
-  const serviceClient = await getSupabaseServiceClient();
   const { data: result, error: scoreError } = await serviceClient.rpc("score_attempt", {
     p_attempt_id: attemptId,
   });
 
   if (scoreError) {
-    return NextResponse.json({ error: "Scoring failed", detail: scoreError.message }, { status: 500 });
+    console.error("[submit] score_attempt error:", scoreError.message, scoreError.code);
+    return NextResponse.json(
+      { error: "Scoring failed", detail: scoreError.message, hint: "Run all SQL migrations in Supabase SQL editor" },
+      { status: 500 }
+    );
   }
 
   // 4b. Refresh leaderboard ranks (non-blocking)

@@ -83,9 +83,12 @@ export async function POST(
     return NextResponse.json({ error: "Attempt has expired" }, { status: 410 });
   }
 
-  // Fetch questions — try cache first (this is the big win for concurrent starts)
+  // Fetch questions — try cache, but validate options aren't empty (stale cache guard)
   let questions = await getCachedQuestions(testId);
-  if (!questions) {
+  const cacheHasBadOptions = questions?.some(
+    (q: any) => q.type === "mcq" && (!q.options || (q.options as unknown[]).length === 0)
+  );
+  if (!questions || cacheHasBadOptions) {
     const { data } = await serviceClient
       .from("questions")
       .select("*, mcq_options(id, option_key, content)")
@@ -111,7 +114,11 @@ export async function POST(
             .map((o) => ({ key: o.option_key, content: o.content }))
         : undefined,
     }));
-    await setCachedQuestions(testId, questions);
+    // Only cache if all MCQ questions have options (avoid caching broken data)
+    const allOptionsPresent = questions.every(
+      (q: any) => q.type !== "mcq" || (q.options && (q.options as unknown[]).length > 0)
+    );
+    if (allOptionsPresent) await setCachedQuestions(testId, questions);
   }
 
   // Transform test to camelCase to match TypeScript Test type
