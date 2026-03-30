@@ -1,0 +1,21 @@
+# Fly.io config for the PlacementPrep queue worker
+# Deploy: fly deploy --config apps/worker/fly.toml
+# Free tier: 3 shared-cpu-1x 256MB VMs included
+
+app = "placement-worker"
+primary_region = "sin"   # Singapore — closest to India
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  # Non-secret env vars. Set secrets via: fly secrets set KEY=value
+  OLLAMA_FAST_URL = "https://your-ollama-url"   # update after Ollama is deployed
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
+
+# Worker has no HTTP port — it's a pure background process
+[processes]
+  app = "node worker.js"

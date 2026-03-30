@@ -1,9 +1,10 @@
 import type { NextConfig } from "next";
 
+const isProd = process.env.NODE_ENV === "production";
+
 const nextConfig: NextConfig = {
-  output: "standalone",
-  // TS errors from missing Supabase generated types don't block production build.
-  // Run `npm run gen-types` after `supabase db push` to fix properly.
+  // standalone is used for Docker deployments; Vercel builds its own output
+  output: isProd && !process.env.VERCEL ? "standalone" : undefined,
   typescript: { ignoreBuildErrors: true },
   eslint: { ignoreDuringBuilds: true },
   images: {
@@ -16,8 +17,15 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["ioredis"],
   experimental: {
     serverActions: {
-      // Accept from nginx (port 80) and direct (port 3000)
-      allowedOrigins: ["localhost", "localhost:3000", "localhost:80"],
+      allowedOrigins: [
+        "localhost",
+        "localhost:3000",
+        "localhost:80",
+        // Allow any *.vercel.app subdomain and custom domains
+        ...(process.env.NEXT_PUBLIC_APP_URL
+          ? [new URL(process.env.NEXT_PUBLIC_APP_URL).host]
+          : []),
+      ],
     },
   },
 };

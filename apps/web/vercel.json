@@ -1,0 +1,8 @@
+{
+  "framework": "nextjs",
+  "functions": {
+    "src/app/api/ai/**": { "maxDuration": 60 },
+    "src/app/api/agent/**": { "maxDuration": 60 },
+    "src/app/api/admin/question-bank/generate/**": { "maxDuration": 60 }
+  }
+}

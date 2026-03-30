@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { PROMPTS } from "@/lib/ollama/prompts";
-import { OLLAMA_ROUTES } from "@/lib/ollama/router";
+import { chat } from "@/lib/ollama/client";
+import type { ChatMessage } from "@/lib/ollama/client";
 import { retrieve, formatContext } from "@/lib/rag/retriever";
 
 const bodySchema = z.object({
@@ -16,55 +17,19 @@ const bodySchema = z.object({
     .optional(),
 });
 
-interface ChatMessage {
-  role: "system" | "user" | "assistant";
-  content: string;
-}
-
 /**
  * Quality-check agent loop.
- * Calls Ollama non-streaming and retries once if the response is too short
- * or is a non-answer (hallucination guard). Returns the best response.
+ * Retries once if the response is too short or is a refusal.
  */
 async function generateWithQualityCheck(messages: ChatMessage[]): Promise<string> {
-  const { baseUrl, model } = OLLAMA_ROUTES.fast;
+  const first = (await chat(messages, { temperature: 0.6, maxTokens: 900 })).content.trim();
 
-  async function call(msgs: ChatMessage[]): Promise<string> {
-    const res = await fetch(`${baseUrl}/api/chat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      signal: AbortSignal.timeout(45_000),
-      body: JSON.stringify({
-        model,
-        messages: msgs,
-        stream: false,
-        options: {
-          temperature: 0.6,
-          num_predict: 900,
-          top_k: 40,
-          top_p: 0.9,
-        },
-      }),
-    });
-    if (!res.ok) {
-      const err = await res.text().catch(() => "");
-      throw new Error(`Ollama ${res.status}: ${err}`);
-    }
-    const data = await res.json();
-    return (data.message?.content ?? "").trim();
-  }
-
-  // --- Attempt 1 ---
-  const first = await call(messages);
-
-  // Quality threshold: too short or a vague refusal
   const isWeak =
     first.length < 100 ||
     /^(i (cannot|can't|don't|do not)|sorry,?\s*i\s+(can't|cannot)|i'm not able)/i.test(first);
 
   if (!isWeak) return first;
 
-  // --- Attempt 2: expansion retry ---
   const retryMessages: ChatMessage[] = [
     ...messages,
     { role: "assistant", content: first },
@@ -76,8 +41,7 @@ async function generateWithQualityCheck(messages: ChatMessage[]): Promise<string
     },
   ];
 
-  const second = await call(retryMessages);
-  // Return whichever is better (longer)
+  const second = (await chat(retryMessages, { temperature: 0.6, maxTokens: 900 })).content.trim();
   return second.length > first.length ? second : first;
 }
 
