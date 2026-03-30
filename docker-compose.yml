@@ -1,0 +1,160 @@
+version: "3.9"
+
+services:
+  # ── Nginx Load Balancer ─────────────────────────────────────────────────────
+  # Entry point for all traffic. Round-robins across scaled web instances.
+  # Run: docker compose up --scale web=3 -d
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - web
+    networks:
+      - internal
+    restart: unless-stopped
+
+  # ── Redis ───────────────────────────────────────────────────────────────────
+  # Caches test questions (10 min TTL), buffers exam answers, rate-limit counters
+  redis:
+    image: redis:7-alpine
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru --save ""
+    networks:
+      - internal
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ── Next.js Web App ────────────────────────────────────────────────────────
+  # No host port — nginx is the only entry point on port 80.
+  # Scale with: docker compose up --scale web=3 -d
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+      target: runner
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_SUPABASE_URL: ${SUPABASE_URL}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      NEXT_PUBLIC_APP_URL: ${APP_URL:-http://localhost}
+      REDIS_URL: redis://redis:6379
+      OLLAMA_FAST_URL: http://ollama-fast:11434
+      OLLAMA_SMART_URL: http://ollama-smart:11434
+      OLLAMA_EMBED_URL: http://ollama-fast:11434
+      OLLAMA_FAST_MODEL: ${OLLAMA_FAST_MODEL:-phi3:mini}
+      OLLAMA_SMART_MODEL: ${OLLAMA_SMART_MODEL:-mistral:7b-instruct-q4_0}
+      OLLAMA_EMBED_MODEL: ${OLLAMA_EMBED_MODEL:-nomic-embed-text}
+      OLLAMA_BASE_URL: http://ollama-fast:11434
+      OLLAMA_MODEL: ${OLLAMA_FAST_MODEL:-phi3:mini}
+    depends_on:
+      ollama-fast:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - internal
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── Question Bank Worker ────────────────────────────────────────────────────
+  # Dedicated queue worker: BRPOP from qbank:queue, generate via Ollama, write to Supabase.
+  # Survives web restarts — jobs are durable in Redis until processed.
+  worker:
+    build:
+      context: ./apps/worker
+      dockerfile: Dockerfile
+    environment:
+      REDIS_URL: redis://redis:6379
+      NEXT_PUBLIC_SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      OLLAMA_FAST_URL: http://ollama-fast:11434
+      OLLAMA_BANK_MODEL: ${OLLAMA_BANK_MODEL:-qwen2:0.5b}
+      OLLAMA_MCQ_MODEL: ${OLLAMA_FAST_MODEL:-phi3:mini}
+    depends_on:
+      ollama-fast:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - internal
+    restart: unless-stopped
+
+  # ── Fast Tier: llama3.2:3b + nomic-embed-text ─────────────────────────────
+  # Always running. Handles MCQ gen, quick answers, RAG embeddings.
+  ollama-fast:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama_fast_models:/root/.ollama
+      - ./ollama/entrypoint.sh:/entrypoint.sh:ro
+      - ./ollama:/models:ro
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
+    ports:
+      - "11434:11434"
+    environment:
+      OLLAMA_KEEP_ALIVE: "24h"
+      OLLAMA_MAX_LOADED_MODELS: "2"
+      OLLAMA_NUM_PARALLEL: "2"
+      OLLAMA_FLASH_ATTENTION: "1"
+      OLLAMA_KV_CACHE_TYPE: "q8_0"
+      OLLAMA_MODEL: ${OLLAMA_FAST_MODEL:-phi3:mini}
+      OLLAMA_EXTRA_MODEL: ${OLLAMA_EMBED_MODEL:-nomic-embed-text}
+    networks:
+      - internal
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list > /dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 20s
+      retries: 10
+      start_period: 300s
+
+  # ── Smart Tier: llama3.1:8b ────────────────────────────────────────────────
+  # Opt-in — run with: docker compose --profile smart up
+  # Handles tutor chat, coding questions, AI agent reasoning.
+  # Requires ~8GB RAM free. Pull is ~5GB (one-time).
+  ollama-smart:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama_smart_models:/root/.ollama
+      - ./ollama/entrypoint.sh:/entrypoint.sh:ro
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
+    ports:
+      - "11435:11434"
+    environment:
+      OLLAMA_KEEP_ALIVE: "24h"
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      OLLAMA_NUM_PARALLEL: "1"
+      OLLAMA_MODEL: ${OLLAMA_SMART_MODEL:-mistral:7b-instruct-q4_0}
+    networks:
+      - internal
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list > /dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 20s
+      retries: 10
+      start_period: 360s
+    profiles: ["smart"]
+
+volumes:
+  ollama_fast_models:
+    driver: local
+  ollama_smart_models:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  internal:
+    driver: bridge

@@ -1,0 +1,142 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* ── Violet / Purple theme ───────────────────────────────── */
+    --background: 250 30% 97%;
+    --foreground: 240 12% 9%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 240 12% 9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 12% 9%;
+
+    /* Primary: vivid violet */
+    --primary: 258 85% 62%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondary: soft lavender */
+    --secondary: 252 30% 94%;
+    --secondary-foreground: 258 40% 30%;
+
+    --muted: 252 20% 93%;
+    --muted-foreground: 240 6% 50%;
+
+    --accent: 258 100% 97%;
+    --accent-foreground: 258 85% 45%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 248 18% 88%;
+    --input: 248 18% 88%;
+    --ring: 258 85% 62%;
+
+    --radius: 0.75rem;
+  }
+
+  .dark {
+    --background: 240 18% 7%;
+    --foreground: 210 40% 96%;
+    --card: 240 15% 10%;
+    --card-foreground: 210 40% 96%;
+    --popover: 240 15% 10%;
+    --popover-foreground: 210 40% 96%;
+    --primary: 258 85% 68%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 15% 16%;
+    --secondary-foreground: 210 40% 96%;
+    --muted: 240 15% 16%;
+    --muted-foreground: 215 20% 62%;
+    --accent: 240 15% 16%;
+    --accent-foreground: 210 40% 96%;
+    --destructive: 0 62% 38%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 240 12% 18%;
+    --input: 240 12% 18%;
+    --ring: 258 85% 68%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Thin custom scrollbar */
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { @apply bg-border rounded-full; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-muted-foreground/40; }
+}
+
+/* ── Sidebar dark gradient ────────────────────────────── */
+.sidebar-gradient {
+  background: linear-gradient(
+    160deg,
+    hsl(250 45% 8%) 0%,
+    hsl(258 55% 10%) 55%,
+    hsl(260 50% 8%) 100%
+  );
+}
+
+/* ── Active nav item glow ─────────────────────────────── */
+.nav-active-glow {
+  box-shadow:
+    0 0 0 1px hsl(258 85% 62% / 0.35),
+    0 4px 20px hsl(258 85% 62% / 0.22);
+}
+
+/* ── Gradient text ────────────────────────────────────── */
+.gradient-text {
+  background: linear-gradient(125deg, hsl(258 85% 72%), hsl(213 90% 70%));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Stat card gradients ──────────────────────────────── */
+.stat-violet  { background: linear-gradient(135deg, hsl(258 85% 62% / 0.12), hsl(258 85% 62% / 0.03)); }
+.stat-blue    { background: linear-gradient(135deg, hsl(213 90% 58% / 0.12), hsl(213 90% 58% / 0.03)); }
+.stat-emerald { background: linear-gradient(135deg, hsl(152 60% 48% / 0.12), hsl(152 60% 48% / 0.03)); }
+.stat-amber   { background: linear-gradient(135deg, hsl(38  92% 50% / 0.12), hsl(38  92% 50% / 0.03)); }
+
+/* ── Card hover lift ──────────────────────────────────── */
+.card-hover {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 28px hsl(258 85% 62% / 0.12);
+}
+
+/* ── Page fade-up entrance ────────────────────────────── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fade-up { animation: fadeUp 0.35s ease forwards; }
+
+/* ── AI Tutor / markdown prose ────────────────────────── */
+.prose-tutor { @apply text-sm leading-relaxed; }
+.prose-ai    { @apply text-sm leading-relaxed; }
+
+.prose-ai code, .prose-tutor code {
+  @apply bg-muted px-1.5 py-0.5 rounded text-xs font-mono;
+}
+.prose-ai pre, .prose-tutor pre {
+  @apply bg-muted p-3 rounded-lg overflow-x-auto my-2;
+}
+.prose-ai pre code, .prose-tutor pre code {
+  @apply bg-transparent p-0;
+}
+.prose-ai strong, .prose-tutor strong { @apply font-semibold; }
+.prose-ai ul, .prose-tutor ul { @apply list-disc pl-4 space-y-1; }
+.prose-ai ol, .prose-tutor ol { @apply list-decimal pl-4 space-y-1; }

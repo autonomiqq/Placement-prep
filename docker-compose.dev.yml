@@ -1,0 +1,19 @@
+version: "3.9"
+
+# Auto-loaded in development. Switches to dev build target with hot-reload volumes.
+services:
+  web:
+    build:
+      target: dev
+    volumes:
+      - ./apps/web/src:/app/src
+      - ./apps/web/public:/app/public
+      - /app/node_modules
+      - /app/.next
+    environment:
+      NODE_ENV: development
+      NEXT_TELEMETRY_DISABLED: "1"
+    command: npm run dev
+  ollama-fast:
+    ports:
+      - "11434:11434"
